@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f766e" />
+  <title>Registro de Asistencia</title>
+
+  <style>
+    :root {
+      --primary: #0f766e;
+      --danger: #dc2626;
+      --success: #15803d;
+      --warning: #b45309;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --border: #dbe3ea;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 20px;
+    }
+
+    main {
+      width: 100%;
+      max-width: 520px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 26px;
+    }
+
+    .subtitle {
+      margin: 0 0 20px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .tabs,
+    .report-type {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 700;
+      font-size: 15px;
+    }
+
+    input {
+      width: 100%;
+      margin-bottom: 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 16px;
+      background: #ffffff;
+    }
+
+    .actions {
+      display: grid;
+      gap: 12px;
+    }
+
+    button {
+      width: 100%;
+      border: 0;
+      border-radius: 8px;
+      padding: 15px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      color: #ffffff;
+      background: var(--primary);
+    }
+
+    button.secondary { background: #334155; }
+    button.photo { background: #2563eb; }
+
+    button.light {
+      color: var(--text);
+      background: #e2e8f0;
+    }
+
+    button.active {
+      background: var(--primary);
+      color: #ffffff;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.65;
+    }
+
+    #photoStep {
+      display: none;
+      margin-top: 12px;
+    }
+
+    #status,
+    #adminStatus {
+      margin-top: 18px;
+      min-height: 48px;
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 15px;
+      line-height: 1.45;
+      background: #f1f5f9;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+
+    #uploadProgressWrap {
+      display: none;
+      width: 100%;
+      height: 14px;
+      margin-top: 12px;
+      background: #e2e8f0;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid #cbd5e1;
+    }
+
+    #uploadProgressBar {
+      width: 0%;
+      height: 100%;
+      background: var(--primary);
+      transition: width 0.25s ease;
+    }
+
+    .success {
+      background: #ecfdf5 !important;
+      border-color: #bbf7d0 !important;
+      color: var(--success) !important;
+    }
+
+    .error {
+      background: #fef2f2 !important;
+      border-color: #fecaca !important;
+      color: var(--danger) !important;
+    }
+
+    .warning {
+      background: #fffbeb !important;
+      border-color: #fde68a !important;
+      color: var(--warning) !important;
+    }
+
+    #adminView {
+      display: none;
+    }
+
+    .table-wrap {
+      margin-top: 16px;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 650px;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      padding: 10px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    th {
+      background: #f1f5f9;
+      font-weight: 700;
+    }
+
+    canvas,
+    input[type="file"] {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <div class="tabs">
+      <button id="tabRegister" class="active" type="button">Registro</button>
+      <button id="tabAdmin" class="light" type="button">Admin</button>
+    </div>
+
+    <section id="registerView">
+      <h1>Registro de Asistencia</h1>
+      <p class="subtitle">
+        Escribe tu nombre, coloca el PIN y registra tu turno desde la ubicacion autorizada.
+      </p>
+
+      <label for="employeeName">Nombre completo</label>
+      <input
+        id="employeeName"
+        type="text"
+        placeholder="Ej. Carlos Martinez"
+        autocomplete="name"
+      />
+
+      <label for="employeePin">PIN</label>
+      <input
+        id="employeePin"
+        type="password"
+        inputmode="numeric"
+        placeholder="Ingresa el PIN"
+        autocomplete="off"
+      />
+
+      <div class="actions">
+        <button id="btnEntrada" type="button">Marcar Entrada</button>
+        <button id="btnSalida" class="secondary" type="button">Marcar Salida</button>
+      </div>
+
+      <div id="photoStep">
+        <button id="btnPhoto" class="photo" type="button">Tomar foto</button>
+      </div>
+
+      <div id="status">Listo para registrar tu turno.</div>
+
+      <div id="uploadProgressWrap">
+        <div id="uploadProgressBar"></div>
+      </div>
+    </section>
+
+    <section id="adminView">
+      <h1>Panel Admin</h1>
+      <p class="subtitle">Consulta reporte general o individual por fecha.</p>
+
+      <label for="adminPin">PIN administrador</label>
+      <input
+        id="adminPin"
+        type="password"
+        inputmode="numeric"
+        placeholder="Ingresa PIN admin"
+        autocomplete="off"
+      />
+
+      <label>Tipo de reporte</label>
+      <div class="report-type">
+        <button id="btnGeneralReport" class="active" type="button">General</button>
+        <button id="btnIndividualReport" class="light" type="button">Individual</button>
+      </div>
+
+      <label for="reportDate">Fecha</label>
+      <input id="reportDate" type="date" />
+
+      <label for="filterName">Nombre para reporte individual</label>
+      <input
+        id="filterName"
+        type="text"
+        placeholder="Ej. Carlos Martinez"
+        disabled
+      />
+
+      <div class="actions">
+        <button id="btnLoadReport" type="button">Consultar reporte</button>
+        <button id="btnExportCsv" class="secondary" type="button">Exportar CSV</button>
+      </div>
+
+      <div id="adminStatus">Listo para consultar.</div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Nombre</th>
+              <th>Entrada</th>
+              <th>Salida</th>
+              <th>Horas</th>
+              <th>Estado</th>
+              <th>Registros</th>
+            </tr>
+          </thead>
+          <tbody id="reportBody">
+            <tr>
+              <td colspan="7">Sin datos cargados.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <input
+      id="photoInput"
+      type="file"
+      accept="image/*"
+      capture="environment"
+      hidden
+    />
+
+    <canvas id="canvas"></canvas>
+  </main>
+
+  <script>
+    const GOOGLE_SCRIPT_URL =
+      "https://script.google.com/macros/s/AKfycbzh4b0ZshAHTa3pPiggo3cOCtjWIlKUQWxLuMmGRSb5h4sGYX5WU8_6EGv_O4cyGFVN/exec";
+
+    const OFFICE_LAT = 13.686113;
+    const OFFICE_LNG = -89.23815075767163;
+    const MAX_DISTANCE_METERS = 150;
+    const MAX_IMAGE_WIDTH = 400;
+    const JPEG_QUALITY = 0.40;
+
+    // Tiempo maximo (ms) que el celular espera la respuesta del servidor.
+    const SEND_TIMEOUT_MS = 90000;
+
+    const tabRegister = document.getElementById("tabRegister");
+    const tabAdmin = document.getElementById("tabAdmin");
+    const registerView = document.getElementById("registerView");
+    const adminView = document.getElementById("adminView");
+
+    const btnEntrada = document.getElementById("btnEntrada");
+    const btnSalida = document.getElementById("btnSalida");
+    const btnPhoto = document.getElementById("btnPhoto");
+    const photoStep = document.getElementById("photoStep");
+    const statusBox = document.getElementById("status");
+    const uploadProgressWrap = document.getElementById("uploadProgressWrap");
+    const uploadProgressBar = document.getElementById("uploadProgressBar");
+    const photoInput = document.getElementById("photoInput");
+    const canvas = document.getElementById("canvas");
+    const employeeNameInput = document.getElementById("employeeName");
+    const employeePinInput = document.getElementById("employeePin");
+
+    const adminPinInput = document.getElementById("adminPin");
+    const reportDateInput = document.getElementById("reportDate");
+    const filterNameInput = document.getElementById("filterName");
+    const btnLoadReport = document.getElementById("btnLoadReport");
+    const btnExportCsv = document.getElementById("btnExportCsv");
+    const btnGeneralReport = document.getElementById("btnGeneralReport");
+    const btnIndividualReport = document.getElementById("btnIndividualReport");
+    const adminStatus = document.getElementById("adminStatus");
+    const reportBody = document.getElementById("reportBody");
+
+    let pendingRecord = null;
+    let currentReportRows = [];
+    let reportType = "general";
+
+    reportDateInput.value = new Date().toISOString().slice(0, 10);
+
+    tabRegister.addEventListener("click", () => showView("register"));
+    tabAdmin.addEventListener("click", () => showView("admin"));
+
+    btnGeneralReport.addEventListener("click", () => {
+      setReportType("general");
+    });
+
+    btnIndividualReport.addEventListener("click", () => {
+      setReportType("individual");
+    });
+
+    btnEntrada.addEventListener("click", () => {
+      startCheckIn("Entrada");
+    });
+
+    btnSalida.addEventListener("click", () => {
+      startCheckIn("Salida");
+    });
+
+    btnPhoto.addEventListener("click", () => {
+      photoInput.click();
+    });
+
+    photoInput.addEventListener("change", handlePhotoSelected);
+    employeeNameInput.addEventListener("blur", loadLastRecord);
+    btnLoadReport.addEventListener("click", loadReport);
+    btnExportCsv.addEventListener("click", exportCsv);
+
+    function showView(view) {
+      const isAdmin = view === "admin";
+
+      registerView.style.display = isAdmin ? "none" : "block";
+      adminView.style.display = isAdmin ? "block" : "none";
+
+      tabRegister.className = isAdmin ? "light" : "active";
+      tabAdmin.className = isAdmin ? "active" : "light";
+    }
+
+    function setReportType(type) {
+      reportType = type;
+
+      const individual = type === "individual";
+
+      btnGeneralReport.className = individual ? "light" : "active";
+      btnIndividualReport.className = individual ? "active" : "light";
+      filterNameInput.disabled = !individual;
+
+      if (!individual) {
+        filterNameInput.value = "";
+      }
+    }
+
+    async function loadLastRecord() {
+      const nombre = normalizeName(employeeNameInput.value);
+
+      if (!nombre || nombre.length < 3) {
+        return;
+      }
+
+      try {
+        const last = await getLastRecord(nombre);
+
+        if (last) {
+          setStatus(
+            "Ultimo registro: " + last.tipoRegistro + " - " + last.fecha + " " + last.hora
+          );
+        } else {
+          setStatus("No hay registros previos para este nombre.");
+        }
+      } catch (error) {
+        setStatus(
+          "No se pudo consultar el ultimo registro.",
+          "warning"
+        );
+      }
+    }
+
+    async function getLastRecord(nombre) {
+      const response = await fetch(
+        GOOGLE_SCRIPT_URL + "?action=last&nombre=" + encodeURIComponent(nombre)
+      );
+
+      const result = await response.json();
+
+      return result.success && result.last
+        ? result.last
+        : null;
+    }
+
+    async function startCheckIn(recordType) {
+      const employeeName = normalizeName(employeeNameInput.value);
+      const pin = employeePinInput.value.trim();
+
+      if (!employeeName || employeeName.length < 3) {
+        setStatus("Escribe tu nombre completo.", "warning");
+        return;
+      }
+
+      if (!pin) {
+        setStatus("Ingresa el PIN.", "warning");
+        return;
+      }
+
+      try {
+        setLoading(true);
+        hidePhotoStep();
+        hideUploadProgress();
+
+        setStatus("Consultando ultimo registro...");
+
+        const lastRecord = await getLastRecord(employeeName);
+
+        if (!lastRecord && recordType === "Salida") {
+          setStatus(
+            "No puedes marcar salida porque todavia no tienes entrada registrada.",
+            "error"
+          );
+          setLoading(false);
+          return;
+        }
+
+        if (
+          lastRecord &&
+          lastRecord.tipoRegistro === recordType
+        ) {
+          setStatus(
+            "No puedes marcar " + recordType + " dos veces seguidas. Ultimo registro: " + lastRecord.tipoRegistro + " - " + lastRecord.fecha + " " + lastRecord.hora,
+            "error"
+          );
+          setLoading(false);
+          return;
+        }
+
+        setStatus("Obteniendo ubicacion actual...");
+
+        const position = await getCurrentPosition();
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        const accuracy = position.coords.accuracy || 0;
+
+        const distance = calculateDistanceMeters(
+          lat,
+          lng,
+          OFFICE_LAT,
+          OFFICE_LNG
+        );
+
+        if (distance > MAX_DISTANCE_METERS) {
+          setStatus(
+            "Registro rechazado. Estas a " + Math.round(distance) + " metros de la oficina. Precision GPS: " + Math.round(accuracy) + " metros. Limite permitido: " + MAX_DISTANCE_METERS + " metros.",
+            "error"
+          );
+          setLoading(false);
+          return;
+        }
+
+        pendingRecord = {
+          recordType,
+          lat,
+          lng,
+          employeeName,
+          pin
+        };
+
+        setStatus(
+          "Ubicacion valida. Ahora toca el boton Tomar foto.",
+          "success"
+        );
+
+        showPhotoStep();
+      } catch (error) {
+        setStatus(getFriendlyError(error), "error");
+        setLoading(false);
+      }
+    }
+
+    async function handlePhotoSelected(event) {
+      try {
+        const file = event.target.files[0];
+
+        if (!file || !pendingRecord) {
+          setStatus("No se selecciono ninguna foto.", "warning");
+          setUploadBusy(false);
+          setLoading(false);
+          hidePhotoStep();
+          hideUploadProgress();
+          return;
+        }
+
+        setUploadBusy(true);
+        showUploadProgress();
+        setUploadProgress(8);
+        setStatus("Procesando foto...");
+
+        const imageBase64 = await resizeImageToBase64(file);
+
+        setUploadProgress(25);
+        setStatus("Preparando registro...");
+
+        const payload = {
+          nombre: pendingRecord.employeeName,
+          pin: pendingRecord.pin,
+          tipoRegistro: pendingRecord.recordType,
+          latitud: pendingRecord.lat,
+          longitud: pendingRecord.lng,
+          imagenBase64: imageBase64
+        };
+
+        setUploadProgress(35);
+        setStatus("Enviando registro a la cola...");
+
+        const result = await postWithProgress(
+          GOOGLE_SCRIPT_URL,
+          payload
+        );
+
+        if (!result.success) {
+          throw new Error(
+            result.message || "No se pudo recibir el registro."
+          );
+        }
+
+        setUploadProgress(100);
+
+        setStatus(
+          "Registro recibido. Se procesara en segundo plano en unos minutos.",
+          "success"
+        );
+
+        employeePinInput.value = "";
+        loadLastRecord();
+      } catch (error) {
+        // Si fue timeout de red, el registro pudo haberse guardado igual
+        // gracias a la cola. Avisamos sin afirmar que fallo.
+        if (error && error.name === "AbortError") {
+          setStatus(
+            "La conexion tardo demasiado. Es posible que el registro SI se haya recibido. Revisa en el panel Admin (o pregunta al administrador) antes de volver a marcar, para no duplicar.",
+            "warning"
+          );
+        } else {
+          setStatus("Error: " + (error.message || "desconocido"), "error");
+        }
+      } finally {
+        pendingRecord = null;
+        photoInput.value = "";
+        hidePhotoStep();
+
+        setTimeout(() => {
+          hideUploadProgress();
+          setUploadBusy(false);
+          setLoading(false);
+        }, 900);
+      }
+    }
+
+    async function postWithProgress(url, payload) {
+      let progress = 35;
+
+      const timer = setInterval(() => {
+        if (progress < 70) {
+          progress += 5;
+        } else if (progress < 88) {
+          progress += 2;
+        } else if (progress < 94) {
+          progress += 1;
+        }
+
+        setUploadProgress(progress);
+      }, 350);
+
+      // Corta la espera si el servidor no responde a tiempo,
+      // en vez de dejar la peticion colgada indefinidamente.
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+      }, SEND_TIMEOUT_MS);
+
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "text/plain;charset=utf-8"
+          },
+          body: JSON.stringify(payload),
+          redirect: "follow",
+          signal: controller.signal
+        });
+
+        setUploadProgress(95);
+
+        const text = await response.text();
+        let result;
+
+        try {
+          result = JSON.parse(text);
+        } catch (error) {
+          throw new Error("Respuesta invalida del servidor.");
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            result.message || "Error al enviar el registro."
+          );
+        }
+
+        return result;
+      } finally {
+        clearTimeout(timeoutId);
+        clearInterval(timer);
+      }
+    }
+
+    async function loadReport() {
+      const adminPin = adminPinInput.value.trim();
+      const fecha = reportDateInput.value;
+      const nombre = normalizeName(filterNameInput.value);
+
+      if (!adminPin) {
+        setAdminStatus(
+          "Ingresa el PIN de administrador.",
+          "warning"
+        );
+        return;
+      }
+
+      if (!fecha) {
+        setAdminStatus("Selecciona una fecha.", "warning");
+        return;
+      }
+
+      if (reportType === "individual" && !nombre) {
+        setAdminStatus(
+          "Escribe el nombre para el reporte individual.",
+          "warning"
+        );
+        return;
+      }
+
+      try {
+        setAdminStatus("Consultando reporte...");
+
+        const url =
+          GOOGLE_SCRIPT_URL + "?action=report" +
+          "&adminPin=" + encodeURIComponent(adminPin) +
+          "&fecha=" + encodeURIComponent(fecha) +
+          "&tipo=" + encodeURIComponent(reportType) +
+          "&nombre=" + encodeURIComponent(nombre);
+
+        const response = await fetch(url);
+        const result = await response.json();
+
+        if (!result.success) {
+          throw new Error(
+            result.message || "No se pudo cargar el reporte."
+          );
+        }
+
+        currentReportRows = result.rows || [];
+        renderReport(currentReportRows);
+
+        const label =
+          reportType === "general"
+            ? "general"
+            : "individual";
+
+        setAdminStatus(
+          "Reporte " + label + " cargado: " + currentReportRows.length + " resultado(s).",
+          "success"
+        );
+      } catch (error) {
+        currentReportRows = [];
+        renderReport([]);
+
+        setAdminStatus(
+          "Error: " + error.message,
+          "error"
+        );
+      }
+    }
+
+    function renderReport(rows) {
+      reportBody.innerHTML = "";
+
+      if (!rows.length) {
+        reportBody.innerHTML =
+          "<tr><td colspan=\"7\">Sin resultados para esa fecha.</td></tr>";
+        return;
+      }
+
+      rows.forEach(row => {
+        const tr = document.createElement("tr");
+
+        tr.innerHTML =
+          "<td>" + escapeHtml(row.fecha) + "</td>" +
+          "<td>" + escapeHtml(row.nombre) + "</td>" +
+          "<td>" + escapeHtml(row.entrada || "-") + "</td>" +
+          "<td>" + escapeHtml(row.salida || "-") + "</td>" +
+          "<td>" + escapeHtml(row.horas || "-") + "</td>" +
+          "<td>" + escapeHtml(row.estado) + "</td>" +
+          "<td>" + escapeHtml(row.registros) + "</td>";
+
+        reportBody.appendChild(tr);
+      });
+    }
+
+    function exportCsv() {
+      if (!currentReportRows.length) {
+        setAdminStatus(
+          "Primero consulta un reporte.",
+          "warning"
+        );
+        return;
+      }
+
+      const headers = [
+        "Fecha",
+        "Nombre",
+        "Primera Entrada",
+        "Ultima Salida",
+        "Horas Trabajadas",
+        "Estado",
+        "Cantidad de Registros"
+      ];
+
+      const rows = currentReportRows.map(row => [
+        row.fecha,
+        row.nombre,
+        row.entrada,
+        row.salida,
+        row.horas,
+        row.estado,
+        row.registros
+      ]);
+
+      const csv = [headers, ...rows]
+        .map(row =>
+          row
+            .map(value =>
+              "\"" + String(value || "").replace(/"/g, "\"\"") + "\""
+            )
+            .join(",")
+        )
+        .join("\n");
+
+      const blob = new Blob(
+        [csv],
+        { type: "text/csv;charset=utf-8" }
+      );
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download =
+        "reporte-" + reportType + "-" + reportDateInput.value + ".csv";
+
+      link.click();
+      URL.revokeObjectURL(url);
+
+      setAdminStatus("CSV descargado.", "success");
+    }
+
+    function showUploadProgress() {
+      uploadProgressWrap.style.display = "block";
+      uploadProgressBar.style.width = "0%";
+    }
+
+    function setUploadProgress(percent) {
+      uploadProgressBar.style.width =
+        Math.max(0, Math.min(100, percent)) + "%";
+    }
+
+    function hideUploadProgress() {
+      uploadProgressWrap.style.display = "none";
+      uploadProgressBar.style.width = "0%";
+    }
+
+    function setUploadBusy(isBusy) {
+      btnEntrada.disabled = isBusy;
+      btnSalida.disabled = isBusy;
+      btnPhoto.disabled = isBusy;
+      employeeNameInput.disabled = isBusy;
+      employeePinInput.disabled = isBusy;
+      tabRegister.disabled = isBusy;
+      tabAdmin.disabled = isBusy;
+    }
+
+    function getCurrentPosition() {
+      return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error("GEOLOCATION_NOT_SUPPORTED"));
+          return;
+        }
+
+        let bestPosition = null;
+        let resolved = false;
+        let watchId = null;
+
+        const finish = position => {
+          if (resolved) {
+            return;
+          }
+
+          resolved = true;
+
+          if (watchId !== null) {
+            navigator.geolocation.clearWatch(watchId);
+          }
+
+          resolve(position);
+        };
+
+        const fail = error => {
+          if (resolved) {
+            return;
+          }
+
+          if (bestPosition) {
+            finish(bestPosition);
+            return;
+          }
+
+          resolved = true;
+
+          if (watchId !== null) {
+            navigator.geolocation.clearWatch(watchId);
+          }
+
+          reject(error);
+        };
+
+        watchId = navigator.geolocation.watchPosition(
+          position => {
+            bestPosition = position;
+
+            const accuracy = position.coords.accuracy || 9999;
+
+            if (accuracy <= 120) {
+              finish(position);
+            }
+          },
+          error => {
+            fail(error);
+          },
+          {
+            enableHighAccuracy: false,
+            maximumAge: 300000,
+            timeout: 60000
+          }
+        );
+
+        setTimeout(() => {
+          if (bestPosition) {
+            finish(bestPosition);
+          } else {
+            fail({
+              code: 3,
+              message: "Tiempo agotado obteniendo ubicacion."
+            });
+          }
+        }, 35000);
+      });
+    }
+
+    function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
+      const earthRadius = 6371000;
+      const dLat = toRadians(lat2 - lat1);
+      const dLon = toRadians(lon2 - lon1);
+
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRadians(lat1)) *
+        Math.cos(toRadians(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+
+      const c =
+        2 * Math.atan2(
+          Math.sqrt(a),
+          Math.sqrt(1 - a)
+        );
+
+      return earthRadius * c;
+    }
+
+    function toRadians(value) {
+      return value * Math.PI / 180;
+    }
+
+    function resizeImageToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onload = () => {
+          const img = new Image();
+
+          img.onload = () => {
+            const scale = Math.min(
+              1,
+              MAX_IMAGE_WIDTH / img.width
+            );
+
+            const width = Math.round(img.width * scale);
+            const height = Math.round(img.height * scale);
+
+            canvas.width = width;
+            canvas.height = height;
+
+            const ctx = canvas.getContext("2d");
+
+            ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+
+            resolve(
+              canvas.toDataURL(
+                "image/jpeg",
+                JPEG_QUALITY
+              )
+            );
+          };
+
+          img.onerror = () => {
+            reject(new Error("No se pudo leer la imagen."));
+          };
+
+          img.src = reader.result;
+        };
+
+        reader.onerror = () => {
+          reject(new Error("No se pudo cargar la foto."));
+        };
+
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function normalizeName(nombre) {
+      return String(nombre || "")
+        .trim()
+        .replace(/\s+/g, " ")
+        .toUpperCase();
+    }
+
+    function setStatus(message, type) {
+      statusBox.className = type || "";
+      statusBox.textContent = message;
+    }
+
+    function setAdminStatus(message, type) {
+      adminStatus.className = type || "";
+      adminStatus.textContent = message;
+    }
+
+    function setLoading(isLoading) {
+      btnEntrada.disabled = isLoading;
+      btnSalida.disabled = isLoading;
+      employeeNameInput.disabled = isLoading;
+      employeePinInput.disabled = isLoading;
+    }
+
+    function showPhotoStep() {
+      photoStep.style.display = "block";
+      btnPhoto.disabled = false;
+    }
+
+    function hidePhotoStep() {
+      photoStep.style.display = "none";
+      btnPhoto.disabled = false;
+    }
+
+    function getFriendlyError(error) {
+      if (error.code === 1) {
+        return "Permiso de ubicacion denegado. Activa la ubicacion para registrar tu turno.";
+      }
+
+      if (error.code === 2) {
+        return "No se pudo determinar tu ubicacion actual. Activa GPS y vuelve a intentar.";
+      }
+
+      if (error.code === 3) {
+        return "No se pudo obtener la ubicacion a tiempo. Activa GPS, espera unos segundos y vuelve a intentar.";
+      }
+
+      if (error.message === "GEOLOCATION_NOT_SUPPORTED") {
+        return "Este navegador no soporta geolocalizacion.";
+      }
+
+      return error.message || "Ocurrio un error inesperado.";
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>
