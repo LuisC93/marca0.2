@@ -270,9 +270,21 @@
       />
 
       <label>Marcaje manual (para llegadas tarde)</label>
+
+      <input
+        id="manualName"
+        type="text"
+        placeholder="Nombre de la persona (ej. JOSE MINEROS)"
+      />
       <div class="actions">
-        <button id="btnToggleManual" class="secondary" type="button">Activar entrada y salida manual</button>
+        <button id="btnGrantManual" type="button">Dar permiso a esta persona</button>
+        <button id="btnRevokeManual" class="secondary" type="button">Quitar permiso</button>
       </div>
+
+      <div class="actions" style="margin-top:8px;">
+        <button id="btnToggleManual" class="light" type="button">Activar manual en este dispositivo</button>
+      </div>
+
       <div id="manualStatus">Marcaje manual desactivado. Se aplican los horarios normales.</div>
 
       <label>Tipo de reporte</label>
@@ -334,7 +346,7 @@
 
   <script>
     const GOOGLE_SCRIPT_URL =
-      "https://script.google.com/macros/s/AKfycbzoX-TNzX1VdQcjrFthQ-c83FA058UduH4L57nMQQN5fFgjfhsV2VucYDDQeq9d7Zmk/exec";
+      "https://script.google.com/macros/s/AKfycbzh4b0ZshAHTa3pPiggo3cOCtjWIlKUQWxLuMmGRSb5h4sGYX5WU8_6EGv_O4cyGFVN/exec";
 
     const OFFICE_LAT = 13.686113;
     const OFFICE_LNG = -89.23815075767163;
@@ -379,12 +391,17 @@
     const windowHint = document.getElementById("windowHint");
     const btnToggleManual = document.getElementById("btnToggleManual");
     const manualStatus = document.getElementById("manualStatus");
+    const manualNameInput = document.getElementById("manualName");
+    const btnGrantManual = document.getElementById("btnGrantManual");
+    const btnRevokeManual = document.getElementById("btnRevokeManual");
 
     let pendingRecord = null;
     let currentReportRows = [];
     let reportType = "general";
     let uiBusy = false;
     let manualOverride = false;
+    let personalPermitName = "";
+    let personalPermitExpiry = 0;
 
     reportDateInput.value = new Date().toISOString().slice(0, 10);
 
@@ -418,9 +435,13 @@
 
     photoInput.addEventListener("change", handlePhotoSelected);
     employeeNameInput.addEventListener("blur", loadLastRecord);
+    employeeNameInput.addEventListener("blur", checkAndCachePermit);
+    employeeNameInput.addEventListener("input", refreshButtons);
     btnLoadReport.addEventListener("click", loadReport);
     btnExportCsv.addEventListener("click", exportCsv);
     btnToggleManual.addEventListener("click", toggleManualMode);
+    btnGrantManual.addEventListener("click", grantManual);
+    btnRevokeManual.addEventListener("click", revokeManual);
 
     function showView(view) {
       const isAdmin = view === "admin";
@@ -497,8 +518,8 @@
         return;
       }
 
-      // Bloqueo por horario, salvo que el admin haya activado el modo manual.
-      if (!manualOverride) {
+      // Bloqueo por horario, salvo modo manual global o permiso personal.
+      if (!manualOverride && !personalPermitActiveNow()) {
         const hourNow = new Date().getHours();
 
         if (recordType === "Salida" && hourNow < SALIDA_START_HOUR) {
@@ -1085,8 +1106,8 @@
         return;
       }
 
-      // Modo manual del admin: ambos habilitados sin importar la hora.
-      if (manualOverride) {
+      // Modo manual: global (este dispositivo) o permiso personal del servidor.
+      if (manualOverride || personalPermitActiveNow()) {
         btnEntrada.disabled = false;
         btnSalida.disabled = false;
 
@@ -1185,6 +1206,163 @@
     function setManualStatus(message, type) {
       manualStatus.className = type || "";
       manualStatus.textContent = message;
+    }
+
+    // Devuelve true si el nombre escrito ahora en Registro tiene permiso
+    // personal vigente (segun lo consultado al servidor y su caducidad).
+    function personalPermitActiveNow() {
+      const name = normalizeName(employeeNameInput.value);
+
+      return (
+        !!name &&
+        name === personalPermitName &&
+        Date.now() < personalPermitExpiry
+      );
+    }
+
+    // Al escribir el nombre, consulta al servidor si esa persona tiene
+    // permiso manual activo y lo guarda en cache (con su hora de expiracion).
+    async function checkAndCachePermit() {
+      const name = normalizeName(employeeNameInput.value);
+
+      if (!name || name.length < 3) {
+        personalPermitName = "";
+        personalPermitExpiry = 0;
+        refreshButtons();
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          GOOGLE_SCRIPT_URL +
+            "?action=checkmanual&nombre=" +
+            encodeURIComponent(name)
+        );
+
+        const result = await response.json();
+
+        if (result.success && result.active) {
+          personalPermitName = name;
+          personalPermitExpiry = Number(result.expiresAt) || 0;
+        } else if (personalPermitName === name) {
+          personalPermitName = "";
+          personalPermitExpiry = 0;
+        }
+      } catch (error) {
+        // Si falla la consulta, no bloquea; simplemente no habilita permiso.
+      }
+
+      refreshButtons();
+    }
+
+    async function grantManual() {
+      const adminPin = adminPinInput.value.trim();
+      const nombre = normalizeName(manualNameInput.value);
+
+      if (!adminPin) {
+        setManualStatus(
+          "Ingresa el PIN de administrador.",
+          "warning"
+        );
+        return;
+      }
+
+      if (!nombre || nombre.length < 3) {
+        setManualStatus(
+          "Escribe el nombre de la persona.",
+          "warning"
+        );
+        return;
+      }
+
+      try {
+        btnGrantManual.disabled = true;
+        setManualStatus("Dando permiso...");
+
+        const response = await fetch(
+          GOOGLE_SCRIPT_URL +
+            "?action=grantmanual&adminPin=" +
+            encodeURIComponent(adminPin) +
+            "&nombre=" +
+            encodeURIComponent(nombre)
+        );
+
+        const result = await response.json();
+
+        if (!result.success) {
+          setManualStatus(
+            result.message || "No se pudo dar el permiso.",
+            "warning"
+          );
+          return;
+        }
+
+        setManualStatus(
+          "Permiso dado a " +
+            nombre +
+            " por " +
+            result.minutes +
+            " minutos. Esa persona ya puede marcar Entrada o Salida desde su telefono.",
+          "success"
+        );
+      } catch (error) {
+        setManualStatus("Error de conexion.", "error");
+      } finally {
+        btnGrantManual.disabled = false;
+      }
+    }
+
+    async function revokeManual() {
+      const adminPin = adminPinInput.value.trim();
+      const nombre = normalizeName(manualNameInput.value);
+
+      if (!adminPin) {
+        setManualStatus(
+          "Ingresa el PIN de administrador.",
+          "warning"
+        );
+        return;
+      }
+
+      if (!nombre || nombre.length < 3) {
+        setManualStatus(
+          "Escribe el nombre de la persona.",
+          "warning"
+        );
+        return;
+      }
+
+      try {
+        btnRevokeManual.disabled = true;
+        setManualStatus("Quitando permiso...");
+
+        const response = await fetch(
+          GOOGLE_SCRIPT_URL +
+            "?action=revokemanual&adminPin=" +
+            encodeURIComponent(adminPin) +
+            "&nombre=" +
+            encodeURIComponent(nombre)
+        );
+
+        const result = await response.json();
+
+        if (!result.success) {
+          setManualStatus(
+            result.message || "No se pudo quitar el permiso.",
+            "warning"
+          );
+          return;
+        }
+
+        setManualStatus(
+          "Permiso quitado a " + nombre + ".",
+          "success"
+        );
+      } catch (error) {
+        setManualStatus("Error de conexion.", "error");
+      } finally {
+        btnRevokeManual.disabled = false;
+      }
     }
 
     function showPhotoStep() {
