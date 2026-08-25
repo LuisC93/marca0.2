@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
@@ -121,7 +121,8 @@
     }
 
     #status,
-    #adminStatus {
+    #adminStatus,
+    #manualStatus {
       margin-top: 18px;
       min-height: 48px;
       border-radius: 8px;
@@ -242,6 +243,8 @@
         <button id="btnSalida" class="secondary" type="button">Marcar Salida</button>
       </div>
 
+      <p id="windowHint" class="subtitle" style="margin-top:12px;margin-bottom:0;"></p>
+
       <div id="photoStep">
         <button id="btnPhoto" class="photo" type="button">Tomar foto</button>
       </div>
@@ -265,6 +268,12 @@
         placeholder="Ingresa PIN admin"
         autocomplete="off"
       />
+
+      <label>Marcaje manual (para llegadas tarde)</label>
+      <div class="actions">
+        <button id="btnToggleManual" class="secondary" type="button">Activar entrada y salida manual</button>
+      </div>
+      <div id="manualStatus">Marcaje manual desactivado. Se aplican los horarios normales.</div>
 
       <label>Tipo de reporte</label>
       <div class="report-type">
@@ -325,7 +334,7 @@
 
   <script>
     const GOOGLE_SCRIPT_URL =
-      "https://script.google.com/macros/s/AKfycbwSSFABj_JnFznW4oZnADpCNP49f5JvBLi2JxH7IbkJGh-P1fAIkrzGf25ikmcutEINcw/exec";
+      "https://script.google.com/macros/s/AKfycbzoX-TNzX1VdQcjrFthQ-c83FA058UduH4L57nMQQN5fFgjfhsV2VucYDDQeq9d7Zmk/exec";
 
     const OFFICE_LAT = 13.686113;
     const OFFICE_LNG = -89.23815075767163;
@@ -335,6 +344,11 @@
 
     // Tiempo maximo (ms) que el celular espera la respuesta del servidor.
     const SEND_TIMEOUT_MS = 90000;
+
+    // Bloqueo por horario para evitar errores de usuario:
+    // - Antes de esta hora (24h): solo se permite ENTRADA.
+    // - Desde esta hora en adelante: solo se permite SALIDA.
+    const SALIDA_START_HOUR = 12;
 
     const tabRegister = document.getElementById("tabRegister");
     const tabAdmin = document.getElementById("tabAdmin");
@@ -362,12 +376,22 @@
     const btnIndividualReport = document.getElementById("btnIndividualReport");
     const adminStatus = document.getElementById("adminStatus");
     const reportBody = document.getElementById("reportBody");
+    const windowHint = document.getElementById("windowHint");
+    const btnToggleManual = document.getElementById("btnToggleManual");
+    const manualStatus = document.getElementById("manualStatus");
 
     let pendingRecord = null;
     let currentReportRows = [];
     let reportType = "general";
+    let uiBusy = false;
+    let manualOverride = false;
 
     reportDateInput.value = new Date().toISOString().slice(0, 10);
+
+    // Aplica el bloqueo por horario al cargar y lo revisa cada minuto
+    // (por si alguien deja la pantalla abierta cuando cambia el mediodia).
+    refreshButtons();
+    setInterval(refreshButtons, 60000);
 
     tabRegister.addEventListener("click", () => showView("register"));
     tabAdmin.addEventListener("click", () => showView("admin"));
@@ -396,6 +420,7 @@
     employeeNameInput.addEventListener("blur", loadLastRecord);
     btnLoadReport.addEventListener("click", loadReport);
     btnExportCsv.addEventListener("click", exportCsv);
+    btnToggleManual.addEventListener("click", toggleManualMode);
 
     function showView(view) {
       const isAdmin = view === "admin";
@@ -470,6 +495,27 @@
       if (!pin) {
         setStatus("Ingresa el PIN.", "warning");
         return;
+      }
+
+      // Bloqueo por horario, salvo que el admin haya activado el modo manual.
+      if (!manualOverride) {
+        const hourNow = new Date().getHours();
+
+        if (recordType === "Salida" && hourNow < SALIDA_START_HOUR) {
+          setStatus(
+            "Por la manana solo se puede marcar Entrada. La Salida se habilita desde las " + SALIDA_START_HOUR + ":00.",
+            "warning"
+          );
+          return;
+        }
+
+        if (recordType === "Entrada" && hourNow >= SALIDA_START_HOUR) {
+          setStatus(
+            "Desde las " + SALIDA_START_HOUR + ":00 solo se puede marcar Salida.",
+            "warning"
+          );
+          return;
+        }
       }
 
       try {
@@ -594,7 +640,7 @@
         setUploadProgress(100);
 
         setStatus(
-          "Registro recibido. Se procesara en segundo plano en unos minutos.",
+          "Registro recibido. Se guardara en unos momentos.",
           "success"
         );
 
@@ -847,13 +893,13 @@
     }
 
     function setUploadBusy(isBusy) {
-      btnEntrada.disabled = isBusy;
-      btnSalida.disabled = isBusy;
+      uiBusy = isBusy;
       btnPhoto.disabled = isBusy;
       employeeNameInput.disabled = isBusy;
       employeePinInput.disabled = isBusy;
       tabRegister.disabled = isBusy;
       tabAdmin.disabled = isBusy;
+      refreshButtons();
     }
 
     function getCurrentPosition() {
@@ -1023,10 +1069,122 @@
     }
 
     function setLoading(isLoading) {
-      btnEntrada.disabled = isLoading;
-      btnSalida.disabled = isLoading;
+      uiBusy = isLoading;
       employeeNameInput.disabled = isLoading;
       employeePinInput.disabled = isLoading;
+      refreshButtons();
+    }
+
+    // Habilita/deshabilita los botones segun la hora del dia.
+    // Manana -> solo Entrada. Tarde (>= SALIDA_START_HOUR) -> solo Salida.
+    // Si hay una operacion en curso (uiBusy), deja todo deshabilitado.
+    function refreshButtons() {
+      if (uiBusy) {
+        btnEntrada.disabled = true;
+        btnSalida.disabled = true;
+        return;
+      }
+
+      // Modo manual del admin: ambos habilitados sin importar la hora.
+      if (manualOverride) {
+        btnEntrada.disabled = false;
+        btnSalida.disabled = false;
+
+        if (windowHint) {
+          windowHint.textContent =
+            "Marcaje manual activo: puedes marcar Entrada o Salida a cualquier hora.";
+        }
+        return;
+      }
+
+      const esManana = new Date().getHours() < SALIDA_START_HOUR;
+
+      btnEntrada.disabled = !esManana;
+      btnSalida.disabled = esManana;
+
+      if (windowHint) {
+        windowHint.textContent = esManana
+          ? "Turno de manana: solo puedes marcar Entrada. La Salida se habilita a las " + SALIDA_START_HOUR + ":00."
+          : "Turno de tarde: solo puedes marcar Salida.";
+      }
+    }
+
+    async function toggleManualMode() {
+      // Desactivar es la direccion segura: no pide PIN.
+      if (manualOverride) {
+        setManualMode(false);
+        setManualStatus(
+          "Marcaje manual desactivado. Se aplican los horarios normales."
+        );
+        return;
+      }
+
+      const adminPin = adminPinInput.value.trim();
+
+      if (!adminPin) {
+        setManualStatus(
+          "Ingresa el PIN de administrador para activar.",
+          "warning"
+        );
+        return;
+      }
+
+      try {
+        btnToggleManual.disabled = true;
+        setManualStatus("Verificando PIN...");
+
+        const ok = await verifyAdminPin(adminPin);
+
+        if (!ok) {
+          setManualStatus(
+            "PIN de administrador incorrecto.",
+            "warning"
+          );
+          return;
+        }
+
+        setManualMode(true);
+        setManualStatus(
+          "Marcaje manual ACTIVADO. Ahora se puede marcar Entrada o Salida a cualquier hora. Ve a la pestana Registro.",
+          "success"
+        );
+      } catch (error) {
+        setManualStatus(
+          "No se pudo verificar el PIN. Revisa tu conexion.",
+          "error"
+        );
+      } finally {
+        btnToggleManual.disabled = false;
+      }
+    }
+
+    function setManualMode(active) {
+      manualOverride = active;
+
+      btnToggleManual.textContent = active
+        ? "Desactivar marcaje manual"
+        : "Activar entrada y salida manual";
+
+      btnToggleManual.className = active ? "" : "secondary";
+
+      refreshButtons();
+    }
+
+    async function verifyAdminPin(pin) {
+      const response = await fetch(
+        GOOGLE_SCRIPT_URL +
+          "?action=verifyadmin&adminPin=" +
+          encodeURIComponent(pin)
+      );
+
+      const result = await response.json();
+
+      return result.success === true;
+    }
+
+    function setManualStatus(message, type) {
+      manualStatus.className = type || "";
+      manualStatus.textContent = message;
     }
 
     function showPhotoStep() {
