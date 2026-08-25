@@ -122,7 +122,8 @@
 
     #status,
     #adminStatus,
-    #manualStatus {
+    #manualStatus,
+    #modeStatus {
       margin-top: 18px;
       min-height: 48px;
       border-radius: 8px;
@@ -269,6 +270,14 @@
         autocomplete="off"
       />
 
+      <label>Modo de marcaje (para todos)</label>
+      <div class="report-type" style="grid-template-columns:1fr 1fr 1fr;">
+        <button id="btnModeEntrada" class="light" type="button">Entrada</button>
+        <button id="btnModeSalida" class="light" type="button">Salida</button>
+        <button id="btnModeAuto" class="light" type="button">Automatico</button>
+      </div>
+      <div id="modeStatus">Cargando modo...</div>
+
       <label>Marcaje manual (para llegadas tarde)</label>
 
       <input
@@ -346,7 +355,7 @@
 
   <script>
     const GOOGLE_SCRIPT_URL =
-      "https://script.google.com/macros/s/AKfycbz7lQfTCFgxh9RuofIjMLg6Mr0q-Y8PrzALafjb6wa9uYEzY04TAUR6pmm0wx14xB0H/exec";
+      "https://script.google.com/macros/s/AKfycbzh4b0ZshAHTa3pPiggo3cOCtjWIlKUQWxLuMmGRSb5h4sGYX5WU8_6EGv_O4cyGFVN/exec";
 
     const OFFICE_LAT = 13.686113;
     const OFFICE_LNG = -89.23815075767163;
@@ -394,6 +403,10 @@
     const manualNameInput = document.getElementById("manualName");
     const btnGrantManual = document.getElementById("btnGrantManual");
     const btnRevokeManual = document.getElementById("btnRevokeManual");
+    const btnModeEntrada = document.getElementById("btnModeEntrada");
+    const btnModeSalida = document.getElementById("btnModeSalida");
+    const btnModeAuto = document.getElementById("btnModeAuto");
+    const modeStatus = document.getElementById("modeStatus");
 
     let pendingRecord = null;
     let currentReportRows = [];
@@ -402,6 +415,7 @@
     let manualOverride = false;
     let personalPermitName = "";
     let personalPermitExpiry = 0;
+    let globalMarkMode = "auto";
 
     reportDateInput.value = new Date().toISOString().slice(0, 10);
 
@@ -409,6 +423,9 @@
     // (por si alguien deja la pantalla abierta cuando cambia el mediodia).
     refreshButtons();
     setInterval(refreshButtons, 60000);
+
+    // Consulta el modo de marcaje que puso el admin (aplica a todos).
+    fetchGlobalMode();
 
     tabRegister.addEventListener("click", () => showView("register"));
     tabAdmin.addEventListener("click", () => showView("admin"));
@@ -436,12 +453,16 @@
     photoInput.addEventListener("change", handlePhotoSelected);
     employeeNameInput.addEventListener("blur", loadLastRecord);
     employeeNameInput.addEventListener("blur", checkAndCachePermit);
+    employeeNameInput.addEventListener("focus", fetchGlobalMode);
     employeeNameInput.addEventListener("input", refreshButtons);
     btnLoadReport.addEventListener("click", loadReport);
     btnExportCsv.addEventListener("click", exportCsv);
     btnToggleManual.addEventListener("click", toggleManualMode);
     btnGrantManual.addEventListener("click", grantManual);
     btnRevokeManual.addEventListener("click", revokeManual);
+    btnModeEntrada.addEventListener("click", () => setGlobalMode("entrada"));
+    btnModeSalida.addEventListener("click", () => setGlobalMode("salida"));
+    btnModeAuto.addEventListener("click", () => setGlobalMode("auto"));
 
     function showView(view) {
       const isAdmin = view === "admin";
@@ -451,6 +472,11 @@
 
       tabRegister.className = isAdmin ? "light" : "active";
       tabAdmin.className = isAdmin ? "active" : "light";
+
+      // Al volver a Registro, refresca el modo por si el admin lo cambio.
+      if (!isAdmin) {
+        fetchGlobalMode();
+      }
     }
 
     function setReportType(type) {
@@ -518,21 +544,16 @@
         return;
       }
 
-      // Bloqueo por horario, salvo modo manual global o permiso personal.
+      // Bloqueo segun el modo del admin (o la hora si esta en Automatico),
+      // salvo modo manual global o permiso personal.
       if (!manualOverride && !personalPermitActiveNow()) {
-        const hourNow = new Date().getHours();
+        const allowed = getAllowedType();
 
-        if (recordType === "Salida" && hourNow < SALIDA_START_HOUR) {
+        if (recordType !== allowed) {
           setStatus(
-            "Por la manana solo se puede marcar Entrada. La Salida se habilita desde las " + SALIDA_START_HOUR + ":00.",
-            "warning"
-          );
-          return;
-        }
-
-        if (recordType === "Entrada" && hourNow >= SALIDA_START_HOUR) {
-          setStatus(
-            "Desde las " + SALIDA_START_HOUR + ":00 solo se puede marcar Salida.",
+            allowed === "Entrada"
+              ? "Ahora solo se puede marcar Entrada."
+              : "Ahora solo se puede marcar Salida.",
             "warning"
           );
           return;
@@ -1118,16 +1139,41 @@
         return;
       }
 
-      const esManana = new Date().getHours() < SALIDA_START_HOUR;
+      // Segun el modo que decidio el admin (o la hora si esta en Automatico).
+      const allowed = getAllowedType();
 
-      btnEntrada.disabled = !esManana;
-      btnSalida.disabled = esManana;
+      btnEntrada.disabled = allowed !== "Entrada";
+      btnSalida.disabled = allowed !== "Salida";
 
       if (windowHint) {
-        windowHint.textContent = esManana
-          ? "Turno de manana: solo puedes marcar Entrada. La Salida se habilita a las " + SALIDA_START_HOUR + ":00."
-          : "Turno de tarde: solo puedes marcar Salida.";
+        if (globalMarkMode === "entrada") {
+          windowHint.textContent =
+            "El administrador habilito ENTRADA. Solo puedes marcar Entrada.";
+        } else if (globalMarkMode === "salida") {
+          windowHint.textContent =
+            "El administrador habilito SALIDA. Solo puedes marcar Salida.";
+        } else {
+          windowHint.textContent = allowed === "Entrada"
+            ? "Turno de manana: solo puedes marcar Entrada. La Salida se habilita a las " + SALIDA_START_HOUR + ":00."
+            : "Turno de tarde: solo puedes marcar Salida.";
+        }
       }
+    }
+
+    // Decide que tipo se puede marcar ahora: segun el modo del admin, o
+    // por hora si esta en Automatico.
+    function getAllowedType() {
+      if (globalMarkMode === "entrada") {
+        return "Entrada";
+      }
+
+      if (globalMarkMode === "salida") {
+        return "Salida";
+      }
+
+      return new Date().getHours() < SALIDA_START_HOUR
+        ? "Entrada"
+        : "Salida";
     }
 
     async function toggleManualMode() {
@@ -1206,6 +1252,101 @@
     function setManualStatus(message, type) {
       manualStatus.className = type || "";
       manualStatus.textContent = message;
+    }
+
+    function setModeStatus(message, type) {
+      modeStatus.className = type || "";
+      modeStatus.textContent = message;
+    }
+
+    function modeLabel(mode) {
+      if (mode === "entrada") {
+        return "ENTRADA (todos marcan entrada)";
+      }
+      if (mode === "salida") {
+        return "SALIDA (todos marcan salida)";
+      }
+      return "Automatico (por hora)";
+    }
+
+    function updateModeButtons() {
+      btnModeEntrada.className =
+        globalMarkMode === "entrada" ? "active" : "light";
+      btnModeSalida.className =
+        globalMarkMode === "salida" ? "active" : "light";
+      btnModeAuto.className =
+        globalMarkMode === "auto" ? "active" : "light";
+    }
+
+    async function fetchGlobalMode() {
+      try {
+        const response = await fetch(
+          GOOGLE_SCRIPT_URL + "?action=getmode"
+        );
+
+        const result = await response.json();
+
+        if (result.success && result.mode) {
+          globalMarkMode = result.mode;
+        }
+      } catch (error) {
+        // Si falla, se queda con el ultimo modo conocido.
+      }
+
+      updateModeButtons();
+      setModeStatus("Modo actual: " + modeLabel(globalMarkMode));
+      refreshButtons();
+    }
+
+    async function setGlobalMode(mode) {
+      const adminPin = adminPinInput.value.trim();
+
+      if (!adminPin) {
+        setModeStatus(
+          "Ingresa el PIN de administrador.",
+          "warning"
+        );
+        return;
+      }
+
+      try {
+        btnModeEntrada.disabled = true;
+        btnModeSalida.disabled = true;
+        btnModeAuto.disabled = true;
+        setModeStatus("Guardando modo...");
+
+        const response = await fetch(
+          GOOGLE_SCRIPT_URL +
+            "?action=setmode&adminPin=" +
+            encodeURIComponent(adminPin) +
+            "&mode=" +
+            encodeURIComponent(mode)
+        );
+
+        const result = await response.json();
+
+        if (!result.success) {
+          setModeStatus(
+            result.message || "No se pudo cambiar el modo.",
+            "warning"
+          );
+          return;
+        }
+
+        globalMarkMode = result.mode;
+        updateModeButtons();
+        setModeStatus(
+          "Modo actual: " + modeLabel(globalMarkMode),
+          "success"
+        );
+        refreshButtons();
+      } catch (error) {
+        setModeStatus("Error de conexion.", "error");
+      } finally {
+        btnModeEntrada.disabled = false;
+        btnModeSalida.disabled = false;
+        btnModeAuto.disabled = false;
+      }
     }
 
     // Devuelve true si el nombre escrito ahora en Registro tiene permiso
